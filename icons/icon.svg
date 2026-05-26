@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <!-- Background circle -->
+  <rect width="512" height="512" rx="80" fill="#001f45"/>
+  <!-- Lightning bolt -->
+  <path d="M280 80L160 280h80l-24 160 136-200h-80l24-160z" fill="white"/>
+</svg>

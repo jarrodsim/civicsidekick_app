@@ -1,0 +1,61 @@
+﻿<!DOCTYPE html>
+<html>
+<head><title>Generate Icons</title></head>
+<body>
+  <p>Open this page in a browser, and the icons will be generated as downloadable PNGs.</p>
+  <canvas id="canvas192" width="192" height="192"></canvas>
+  <canvas id="canvas512" width="512" height="512"></canvas>
+  <script>
+    function drawIcon(canvasId, size) {
+      const c = document.getElementById(canvasId);
+      const ctx = c.getContext('2d');
+      
+      // Rounded rect background
+      const r = size * 0.15;
+      ctx.beginPath();
+      ctx.moveTo(r, 0);
+      ctx.lineTo(size - r, 0);
+      ctx.quadraticCurveTo(size, 0, size, r);
+      ctx.lineTo(size, size - r);
+      ctx.quadraticCurveTo(size, size, size - r, size);
+      ctx.lineTo(r, size);
+      ctx.quadraticCurveTo(0, size, 0, size - r);
+      ctx.lineTo(0, r);
+      ctx.quadraticCurveTo(0, 0, r, 0);
+      ctx.closePath();
+      ctx.fillStyle = '#001f45';
+      ctx.fill();
+
+      // Lightning bolt
+      const cx = size * 0.5;
+      const cy = size * 0.5;
+      const s = size * 0.35;
+      
+      ctx.beginPath();
+      ctx.moveTo(cx + s * 0.15, cy - s * 1.1);
+      ctx.lineTo(cx - s * 0.55, cy - s * 0.1);
+      ctx.lineTo(cx + s * 0.1, cy - s * 0.1);
+      ctx.lineTo(cx - s * 0.15, cy + s * 1.1);
+      ctx.lineTo(cx + s * 0.55, cy + s * 0.1);
+      ctx.lineTo(cx - s * 0.1, cy + s * 0.1);
+      ctx.closePath();
+      ctx.fillStyle = 'white';
+      ctx.fill();
+      
+      // Create download link
+      const link = document.createElement('a');
+      link.download = 'icon-' + size + '.png';
+      link.href = c.toDataURL('image/png');
+      link.textContent = ' Download icon-' + size + '.png ';
+      link.style.cssText = 'display:inline-block;padding:10px 20px;background:#001f45;color:white;border-radius:8px;text-decoration:none;font:14px sans-serif;margin:10px';
+      document.body.appendChild(link);
+      document.body.appendChild(document.createElement('br'));
+    }
+    
+    drawIcon('canvas192', 192);
+    drawIcon('canvas512', 512);
+    
+    document.body.style.cssText = 'font-family:sans-serif;padding:40px;text-align:center';
+  </script>
+</body>
+</html>

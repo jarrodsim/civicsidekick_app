@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Civic Sidekick</title>
+  <meta http-equiv="refresh" content="0;url=/">
+  <script>
+    // Redirect all 404s to the main app (SPA routing)
+    sessionStorage.setItem('redirect', window.location.pathname + window.location.search);
+    window.location.replace('/');
+  </script>
+</head>
+<body>
+  <p>Redirecting to <a href="/">Civic Sidekick</a>...</p>
+</body>
+</html>

@@ -1,0 +1,14 @@
+[build]
+  publish = "."
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+git init
+git add .
+git commit -m "ship civic sidekick"
+git remote add origin https://github.com/jarrodsim/civic-sidekick.git
+git push -u origin main
+
