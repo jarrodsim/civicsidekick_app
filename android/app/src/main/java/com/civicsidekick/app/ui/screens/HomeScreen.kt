@@ -1,4 +1,4 @@
-package com.civicsidekick.app.ui.screens
+﻿package com.civicsidekick.app.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -30,11 +30,7 @@ import com.civicsidekick.app.ui.theme.*
 fun HomeScreen(
     address: String,
     reps: List<Representative>,
-    recentBills: List<Bill>,
-    trackedBillIds: Set<String>,
-    onNavigateBrowse: () -> Unit,
     onRepClick: (Representative) -> Unit,
-    onToggleTrack: (String) -> Unit,
     onCallRep: (String) -> Unit,
     onOpenWebsite: (String) -> Unit,
     onOpenOpenStates: (String) -> Unit,
@@ -96,7 +92,6 @@ fun HomeScreen(
                     fontWeight = FontWeight.SemiBold,
                     color = Neutral
                 )
-                TextButton(onClick = onNavigateBrowse) {
                     Text("View all", color = Primary, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
                 }
             }
@@ -144,13 +139,12 @@ fun HomeScreen(
                     fontWeight = FontWeight.SemiBold,
                     color = Neutral
                 )
-                TextButton(onClick = onNavigateBrowse) {
                     Text("Browse all", color = Primary, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
                 }
             }
         }
 
-        if (recentBills.isEmpty()) {
+        if (
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -167,11 +161,10 @@ fun HomeScreen(
                 }
             }
         } else {
-            items(recentBills) { bill ->
+            items(
                 BillMiniCard(
                     bill = bill,
-                    isTracked = trackedBillIds.contains(bill.id),
-                    onToggleTrack = { onToggleTrack(bill.id) }
+                    isTracked = 
                 )
             }
         }
@@ -182,8 +175,8 @@ fun HomeScreen(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                StatCard(label = "Tracked", value = trackedBillIds.size.toString())
-                StatCard(label = "Bills", value = recentBills.size.toString())
+                StatCard(label = "Tracked", value = 
+                StatCard(label = "Bills", value = 
                 StatCard(label = "My Reps", value = reps.size.toString())
             }
         }
@@ -412,7 +405,6 @@ private fun RepCard(
 }
 
 @Composable
-private fun BillMiniCard(bill: Bill, isTracked: Boolean, onToggleTrack: () -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = SurfaceWhite),
@@ -455,7 +447,6 @@ private fun BillMiniCard(bill: Bill, isTracked: Boolean, onToggleTrack: () -> Un
 
             // Track button
             FilledTonalIconButton(
-                onClick = onToggleTrack,
                 colors = IconButtonDefaults.filledTonalIconButtonColors(
                     containerColor = if (isTracked) Secondary.copy(alpha = 0.15f) else NeutralLightest.copy(alpha = 0.5f)
                 )

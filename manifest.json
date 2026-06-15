@@ -1,8 +1,8 @@
-{
+﻿{
   
   "name": "Civic Sidekick",
   "short_name": "Sidekick",
-  "description": "Your companion for civic engagement. Find your elected officials and track legislation.",
+  "description": "Find every official who represents you and learn how each office affects your life.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#f4f5f7",

@@ -1,7 +1,6 @@
-// ============================================
-
-
+﻿// ============================================
 // Civic Sidekick - Main Application JavaScript
+// Version: 2.0 (MVP) - Rep Finder + Education
 // ============================================
 
 // --- State ---
@@ -9,17 +8,12 @@ const state = {
   currentScreen: 'landing',
   address: '',
   reps: [],
-  trackedBills: [],
-  allBills: [],
-  currentPage: 1,
-  itemsPerPage: 10,
-  currentBillFilter: ''
+  zipCode: ''
 };
 
 // ============================================
 // GLOBAL HELPERS
 // ============================================
-
 function showLoading() {
   let overlay = document.getElementById('global-loading');
   if (!overlay) {
@@ -59,143 +53,18 @@ function hideError() {
 
 // ============================================
 // API CONFIG
+
+
 // ============================================
-
-// GovTrack.us API is public (no key needed for basic usage)
-// Congress.gov API key reserved for future server-side use
-const CONGRESS_GOV_API_KEY = '8y0kxMPAyL6mkWQJMb0CwaHZijyiorrb7WT4dPaS';
-
-// OpenStates API key for state-level legislators
+// API CONFIG
+// ============================================
+const PROPUBLICA_API_KEY = 'YOUR_PROPUBLICA_API_KEY'; // Get free at propublica.org/datastore/
 const OPENSTATES_API_KEY = '14758350-d06d-4c26-9ec0-cd8060abebd7';
 
 // ============================================
 // DATA / API FUNCTIONS
 // ============================================
 
-// --- GovTrack.us API ---
-// Fetches recent bills (CORS-friendly, works from browser)
-async function fetchBills() {
-  if (state.allBills.length) return state.allBills;
-
-  showLoading();
-
-  try {
-    // Fetch current active bills from GovTrack.us
-    // GovTrack API is CORS-friendly and free (no key needed for basic usage)
-    const limit = 50;
-    const url = `https://www.govtrack.us/api/v2/bill?format=json&limit=${limit}&order_by=-current_status_date`;
-
-    const response = await fetch(url);
-
-    if (!response.ok) {
-      throw new Error(`GovTrack API error: ${response.status}`);
-    }
-
-    const data = await response.json();
-    const billsData = data.objects || [];
-
-    // Normalize bill data
-    const bills = [];
-    const topicKeywords = {
-      'education': 'Education',
-      'health': 'Healthcare',
-      'tax': 'Tax Reform',
-      'climate': 'Climate',
-      'immigration': 'Immigration',
-      'veteran': 'Veterans',
-      'technology': 'Technology',
-      'agriculture': 'Agriculture',
-      'transportation': 'Transportation',
-      'housing': 'Housing',
-      'defense': 'Defense',
-      'energy': 'Energy',
-      'crime': 'Criminal Justice',
-      'budget': 'Budget',
-      'economy': 'Economy'
-    };
-
-    for (const b of billsData) {
-      // Determine topic from bill title/keywords
-      const titleLower = (b.title_without_number || b.title || '').toLowerCase();
-      let topic = 'General';
-      for (const [keyword, topicName] of Object.entries(topicKeywords)) {
-        if (titleLower.includes(keyword)) {
-          topic = topicName;
-          break;
-        }
-      }
-
-      // Determine status from GovTrack's normalized status
-      let status = b.current_status_label || 'Introduced';
-
-      // Bill type prefix
-      const billType = b.bill_type_label || (b.bill_type === 'house_bill' ? 'H.R.' : b.bill_type === 'senate_bill' ? 'S.' : 'H.R.');
-      const billNumber = b.number || '';
-
-      // Sponsor
-      const sponsor = b.sponsor ? b.sponsor.name || 'Unknown' : 'Unknown';
-
-      // Summary - use title as fallback
-      let summary = b.title_without_number || b.title || '';
-      if (summary.length > 300) summary = summary.substring(0, 300) + '...';
-
-      // Origin date
-      const introducedDate = b.introduced_date || '';
-
-      // Origin chamber
-      const originChamber = b.bill_type && b.bill_type.includes('senate') ? 'Senate' : 'House';
-
-      bills.push({
-        id: b.display_number || `${billType} ${billNumber}`,
-        title: b.title_without_number || b.title || `${billType} ${billNumber}`,
-        summary: summary,
-        sponsor: sponsor,
-        status: status,
-        introduced: introducedDate,
-        topic: topic,
-        congressDotGovUrl: b.link || `https://www.govtrack.us/congress/bills/118/${b.bill_type?.includes('senate') ? 's' : 'hr'}${billNumber}`,
-        originChamber: originChamber
-      });
-    }
-
-    hideLoading();
-    state.allBills = bills;
-    return bills;
-
-  } catch (err) {
-    hideLoading();
-    console.error('GovTrack API error:', err);
-    showError('Could not load bills. Using sample data as fallback.');
-    // Fallback to sample data on error
-    return fetchBillsFallback();
-  }
-}
-
-// Fallback sample data if API fails
-async function fetchBillsFallback() {
-  if (state.allBills.length) return state.allBills;
-  const topics = ['Education','Healthcare','Tax Reform','Climate','Immigration','Veterans','Technology','Agriculture','Transportation','Housing'];
-  const statuses = ['Introduced','In Committee','Passed House','Passed Senate','Signed into Law'];
-  const bills = [];
-  for (let i = 1; i <= 50; i++) {
-    const t = topics[i % topics.length];
-    bills.push({
-      id: `HR-${100 + i}`,
-      title: `${t} Improvement Act of 2025`,
-      summary: `This bill aims to improve ${t.toLowerCase()} systems across the United States.`,
-      sponsor: `Rep. Sample ${String.fromCharCode(65 + (i % 26))}`,
-      status: statuses[i % statuses.length],
-      introduced: `2025-${String(Math.floor(i/2)+1).padStart(2,'0')}-${String((i*3)%28+1).padStart(2,'0')}`,
-      topic: t,
-      congressDotGovUrl: ''
-    });
-  }
-  state.allBills = bills;
-  return bills;
-}
-
-// --- Static Governor Lookup by State ---
-// Updated as elections occur; covers all 50 states + DC
 const STATE_GOVERNORS = {
   AL: { name: 'Kay Ivey', party: 'Republican' },
   AK: { name: 'Mike Dunleavy', party: 'Republican' },
@@ -250,25 +119,6 @@ const STATE_GOVERNORS = {
   DC: { name: 'Muriel Bowser', party: 'Democratic' }
 };
 
-// State name → abbreviation mapping for OpenStates
-const STATE_TO_ABBR = {
-  'alabama': 'AL', 'alaska': 'AK', 'arizona': 'AZ', 'arkansas': 'AR',
-  'california': 'CA', 'colorado': 'CO', 'connecticut': 'CT', 'delaware': 'DE',
-  'florida': 'FL', 'georgia': 'GA', 'hawaii': 'HI', 'idaho': 'ID',
-  'illinois': 'IL', 'indiana': 'IN', 'iowa': 'IA', 'kansas': 'KS',
-  'kentucky': 'KY', 'louisiana': 'LA', 'maine': 'ME', 'maryland': 'MD',
-  'massachusetts': 'MA', 'michigan': 'MI', 'minnesota': 'MN', 'mississippi': 'MS',
-  'missouri': 'MO', 'montana': 'MT', 'nebraska': 'NE', 'nevada': 'NV',
-  'new hampshire': 'NH', 'new jersey': 'NJ', 'new mexico': 'NM',
-  'new york': 'NY', 'north carolina': 'NC', 'north dakota': 'ND',
-  'ohio': 'OH', 'oklahoma': 'OK', 'oregon': 'OR', 'pennsylvania': 'PA',
-  'rhode island': 'RI', 'south carolina': 'SC', 'south dakota': 'SD',
-  'tennessee': 'TN', 'texas': 'TX', 'utah': 'UT', 'vermont': 'VT',
-  'virginia': 'VA', 'washington': 'WA', 'west virginia': 'WV',
-  'wisconsin': 'WI', 'wyoming': 'WY', 'district of columbia': 'DC'
-};
-
-// --- ZIP Code to State lookup via Zippopotam.us (free, CORS-enabled) ---
 async function zipToState(zip) {
   try {
     const res = await fetch(`http://api.zippopotam.us/us/${zip}`);
@@ -284,7 +134,62 @@ async function zipToState(zip) {
 
 // --- GovTrack.us API ---
 // Finds current federal elected officials by state (CORS-friendly, no key needed)
-async function fetchFederalRepsByState(stateCode) {
+
+
+// --- ProPublica Congress API ---
+async function fetchFederalRepsByState(stateAbbr) {
+  showLoading();
+  try {
+    const [senateRes, houseRes] = await Promise.all([
+      fetch(`https://api.propublica.org/congress/v1/119/senate/members.json`, {
+        headers: { 'X-API-Key': PROPUBLICA_API_KEY }
+      }),
+      fetch(`https://api.propublica.org/congress/v1/119/house/members.json`, {
+        headers: { 'X-API-Key': PROPUBLICA_API_KEY }
+      })
+    ]);
+    if (!senateRes.ok || !houseRes.ok) throw new Error('ProPublica API error');
+    const senateData = await senateRes.json();
+    const houseData = await houseRes.json();
+    const allMembers = [
+      ...(senateData.results?.[0]?.members || []),
+      ...(houseData.results?.[0]?.members || [])
+    ];
+    const reps = allMembers
+      .filter(m => m.state === stateAbbr)
+      .map(m => ({
+        name: m.first_name + ' ' + m.last_name,
+        party: m.party === 'D' ? 'Democratic' : m.party === 'R' ? 'Republican' : m.party || '',
+        state: m.state,
+        district: m.district || '',
+        chamber: m.chamber === 'Senate' ? 'U.S. Senate' : 'U.S. House',
+        level: 'federal',
+        phone: m.phone || '',
+        website: m.url || '',
+        email: m.email || '',
+        officeName: '',
+        officeAddress: m.office || '',
+        photoUrl: '',
+        imageUrl: '',
+        bio: '',
+        title: m.short_title || (m.chamber === 'Senate' ? 'Senator' : 'Representative'),
+        govtrackUrl: '',
+        openstatesUrl: '',
+        wikipediaTitle: m.wikipedia_id || m.first_name + '_' + m.last_name,
+        localRole: ''
+      }));
+    hideLoading();
+    return reps;
+  } catch (err) {
+    console.error('ProPublica API error:', err);
+    hideLoading();
+    showError('Could not fetch federal reps via ProPublica. Trying fallback...');
+    return fetchFederalRepsFallback(stateAbbr);
+  }
+}
+
+// --- GovTrack.us Fallback (no API key) ---
+async function fetchFederalRepsFallback(stateCode) {
   try {
     const url = `https://www.govtrack.us/api/v2/role?format=json&current=true&state=${stateCode}&limit=60`;
 
@@ -354,6 +259,8 @@ async function fetchFederalRepsByState(stateCode) {
 // --- OpenStates API ---
 // Finds state-level legislators by state (state senators + representatives/assembly)
 // Note: API caps at 10 per page, we fetch pages 1 and 2 for ~20 results
+
+
 async function fetchStateLegislators(stateCode) {
   try {
     const stateLower = stateCode.toLowerCase();
@@ -418,6 +325,8 @@ async function fetchStateLegislators(stateCode) {
 
 // --- Wikipedia API ---
 // Searches Wikipedia for a person and returns their page image and extract
+
+
 async function enrichRepWithWikipedia(rep) {
   try {
     // Search Wikipedia for the person
@@ -471,6 +380,8 @@ async function enrichRepWithWikipedia(rep) {
 
 // Fetch ALL representatives by ZIP code (federal + state + governor) 
 // and enrich with Wikipedia data
+
+
 function showCoverageNote() {
   const covNote = document.getElementById('coverage-note');
   if (!covNote || !state.reps || state.reps.length === 0) return;
@@ -558,466 +469,222 @@ async function findReps(zip) {
 // RENDER FUNCTIONS
 // ============================================
 
+
+
+// --- Main Rep Finder ---
+async function findReps(zip) {
+  if (!zip || zip.length < 5) return;
+  showLoading();
+  state.zipCode = zip;
+  state.address = zip;
+  try {
+    const stateAbbr = await zipToState(zip);
+    if (!stateAbbr) {
+      hideLoading();
+      showError('Could not determine state from that ZIP code.');
+      return;
+    }
+    let allReps = await fetchFederalRepsByState(stateAbbr);
+    const gov = STATE_GOVERNORS[stateAbbr];
+    if (gov) {
+      allReps.push({
+        name: gov.name,
+        party: gov.party,
+        state: stateAbbr,
+        district: '',
+        chamber: 'Governor',
+        level: 'state',
+        phone: '',
+        website: '',
+        email: '',
+        officeName: 'Governor',
+        officeAddress: '',
+        photoUrl: '',
+        imageUrl: '',
+        bio: '',
+        title: 'Governor',
+        govtrackUrl: '',
+        openstatesUrl: '',
+        wikipediaTitle: gov.name.replace(/ /g, '_'),
+        localRole: ''
+      });
+    }
+    const stateLegislators = await fetchStateLegislators(stateAbbr);
+    allReps = allReps.concat(stateLegislators);
+    const enrichedReps = [];
+    for (const rep of allReps) {
+      enrichedReps.push(await enrichRepWithWikipedia(rep));
+    }
+    state.reps = enrichedReps;
+    renderScreen('home');
+    if (window.lucide) lucide.createIcons();
+    showCoverageNote();
+    showToast('Found ' + enrichedReps.length + ' officials');
+  } catch (err) {
+    console.error('findReps error:', err);
+    showError('Something went wrong. Please try again.');
+  } finally {
+    hideLoading();
+  }
+}
+
+
+// ============================================
+// RENDER FUNCTIONS
+// ============================================
+
 function renderApp() {
   const app = document.getElementById('app');
-  app.innerHTML = `
-    ${renderHeader()}
-    <div id="screen-container"></div>
-    ${renderBottomNav()}
-  `;
+  app.innerHTML = renderHeader() + renderBottomNav() + '<main id="main-content"></main>';
   renderScreen(state.currentScreen);
+  if (window.lucide) lucide.createIcons();
 }
 
 function renderHeader() {
-  return `
-    <header class="app-header" id="app-header">
-      <div class="header-left">
-        <span class="header-icon-btn" id="menu-btn">
-          <i data-lucide="menu" style="width:22px;height:22px"></i>
-        </span>
-      </div>
-      <div>
-        <h1>Civic Sidekick</h1>
-        <div class="header-subtitle">Your Civic Dashboard</div>
-      </div>
-      <div class="header-right">
-        <span class="header-icon-btn" id="notif-btn">
-          <i data-lucide="bell" style="width:20px;height:20px"></i>
-        </span>
-      </div>
-    </header>
-  `;
+  return '<header id="app-header">' +
+    '<div class="header-inner">' +
+      '<div class="logo" onclick="navigate(\'home\')">' +
+        '<span class="logo-icon">&#9889;</span>' +
+        '<span class="logo-text">Civic Sidekick</span>' +
+      '</div>' +
+    '</div>' +
+  '</header>';
 }
 
 function renderBottomNav() {
   const navItems = [
     { id: 'home', label: 'Home', icon: 'home' },
-    { id: 'browse', label: 'Browse', icon: 'search' },
     { id: 'elections', label: 'Elections', icon: 'vote' },
     { id: 'events', label: 'Events', icon: 'calendar' },
-    { id: 'tracking', label: 'My Bills', icon: 'file-text' },
     { id: 'settings', label: 'Settings', icon: 'settings' }
   ];
-  const items = navItems.map(n => `
-    <button class="nav-item${state.currentScreen === n.id ? ' active' : ''}" data-screen="${n.id}">
-      <i data-lucide="${n.icon}" style="width:22px;height:22px"></i>
-      <span>${n.label}</span>
-    </button>
-  `).join('');
-  return `
-    <nav class="bottom-nav" id="bottom-nav">
-      ${items}
-    </nav>
-  `;
+  const items = navItems.map(function(n) {
+    var active = state.currentScreen === n.id ? ' active' : '';
+    return '<button class="nav-item' + active + '" data-screen="' + n.id + '">' +
+      '<i data-lucide="' + n.icon + '" style="width:22px;height:22px"></i>' +
+      '<span>' + n.label + '</span>' +
+    '</button>';
+  }).join('');
+  return '<nav id="bottom-nav">' + items + '</nav>';
 }
 
-function renderScreen(screenId) {
-  const container = document.getElementById('screen-container');
-  const screens = {
-    landing: renderLanding,
-    home: renderHome,
-    browse: renderBrowse,
-    elections: renderElections,
-    events: renderEvents,
-    tracking: renderTracking,
-    settings: renderSettings
-  };
-  const renderFn = screens[screenId] || renderHome;
-  container.innerHTML = `<div class="screen active" id="screen-${screenId}"><div class="content">${renderFn()}</div></div>`;
-  // Re-init Lucide icons
+function navigate(screen) {
+  state.currentScreen = screen;
+  renderScreen(screen);
   if (window.lucide) lucide.createIcons();
+}
+
+const screens = {
+  landing: renderLanding,
+  home: renderHome,
+  elections: renderElections,
+  events: renderEvents,
+  settings: renderSettings
+};
+
+function renderScreen(screenId) {
+  var main = document.getElementById('main-content');
+  if (!main) return;
+  state.currentScreen = screenId;
+  document.querySelectorAll('.nav-item').forEach(function(n) {
+    n.classList.toggle('active', n.dataset.screen === screenId);
+  });
+  if (screens[screenId]) {
+    main.innerHTML = screens[screenId]();
+  } else {
+    main.innerHTML = screens.home();
+  }
   attachScreenListeners(screenId);
 }
 
-// --- LANDING ---
 function renderLanding() {
-  return `
-    <div class="landing">
-      <div class="landing-logo">
-        <div style="position:relative;display:inline-block">
-          <i data-lucide="zap" style="width:56px;height:56px;stroke-width:1.5;color:var(--primary)"></i>
-          <i data-lucide="circle" style="width:64px;height:64px;stroke-width:1;color:var(--primary-light);opacity:0.2;position:absolute;top:-4px;left:-4px"></i>
-        </div>
-        <h1>Civic Sidekick</h1>
-        <p>Your companion for civic engagement</p>
-      </div>
-      <div class="landing-form">
-        <div class="input-group">
-          <label class="input-label">Enter your ZIP Code to get started</label>
-          <input type="text" class="input-field" id="landing-address" placeholder="e.g. 90210" maxlength="10" />
-        </div>
-        <button class="btn btn-primary btn-block btn-lg" id="landing-btn">
-          <i data-lucide="arrow-right" style="width:18px;height:18px"></i>
-          Get Started
-        </button>
-        <div id="landing-error" style="color:#c73a3a;font-size:13px;margin-top:8px;text-align:center;display:none"></div>
-      </div>
-      <div class="landing-footer">
-        <p>Find your representatives, track legislation, and stay informed.</p>
-        <a class="vote-link" href="https://vote.gov" target="_blank" rel="noopener noreferrer">
-          <i data-lucide="vote" style="width:16px;height:16px"></i>
-          Check or Register to Vote
-        </a>
-      </div>
-    </div>
-  `;
+  return '<div class="landing">' +
+    '<div class="landing-content">' +
+      '<div class="landing-icon">&#9889;</div>' +
+      '<h1>Civic Sidekick</h1>' +
+      '<p class="landing-subtitle">Your companion for civic engagement.</p>' +
+      '<p class="landing-desc">Enter your ZIP code and instantly see every person representing you.</p>' +
+      '<div class="zip-input-group">' +
+        '<input type="text" class="input-field" id="landing-zip" placeholder="Enter your ZIP code" maxlength="10" autofocus />' +
+        '<button class="btn btn-primary" id="landing-go">Find My Reps</button>' +
+      '</div>' +
+      '<div class="landing-privacy">' +
+        '<i data-lucide="shield" style="width:14px;height:14px"></i> No signup. No tracking. Your ZIP goes straight to public APIs.' +
+      '</div>' +
+    '</div>' +
+  '</div>';
 }
 
-// --- HOME (Dashboard) ---
 function renderHome() {
-  const addressChip = state.address ? `
-    <div class="address-chip">
-      <i data-lucide="map-pin" style="width:14px;height:14px"></i>
-      ${state.address}
-    </div>
-  ` : '';
-
-  const tracked = state.trackedBills.length;
-  const recentBills = state.allBills.slice(0, 3);
-
-  let repCards = '';
+  var addressChip = state.address ?
+    '<div class="address-chip"><i data-lucide="map-pin" style="width:14px;height:14px"></i> ' + state.address + '</div>' : '';
+  var repCards = '';
   if (state.reps.length) {
-    repCards = state.reps.slice(0, 2).map(r => {
-      const partyColor = r.party === 'Republican' ? '#c73a3a' : '#1b6d24';
-      const hasImage = r.imageUrl && r.imageUrl !== '';
-      const eduInfo = window.getEducationForRep ? window.getEducationForRep(r) : null;
-      const lifeImpact = eduInfo?.affectsYourLife || '';
-      return `
-        <div class="card" style="padding:0;">
-          <div class="rep-card">
-            <div class="rep-avatar" style="background:${partyColor};color:white;font-weight:700;font-size:20px;overflow:hidden">
-              ${hasImage
-                ? `<img src="${r.imageUrl}" alt="${r.name}" style="width:100%;height:100%;object-fit:cover" />`
-                : r.name.charAt(0)
-              }
-            </div>
-            <div class="rep-info">
-              <div class="rep-name">${r.name}</div>
-              <div class="rep-role">${r.chamber} - ${r.party}</div>
-              <span class="rep-party">${r.state}${r.district ? '-' + r.district : ''}</span>
-            </div>
-            <button class="btn btn-sm btn-outline" onclick="navigate('browse')">Contact</button>
-          </div>
-        </div>
-      `;
+    repCards = state.reps.map(function(r) {
+      var partyColor = r.party === 'Republican' ? '#c73a3a' : '#1b6d24';
+      var eduInfo = window.getEducationForRep ? window.getEducationForRep(r) : null;
+      var lifeImpact = eduInfo ? eduInfo.affectsYourLife || '' : '';
+      var initial = r.name ? r.name.charAt(0).toUpperCase() : '?';
+      var hasImage = r.imageUrl && r.imageUrl !== '';
+      var levelBadge = r.level === 'federal' ? 'FEDERAL' : r.level === 'state' ? 'STATE' : 'LOCAL';
+      var levelColor = r.level === 'federal' ? 'var(--primary)' : r.level === 'state' ? 'var(--tertiary)' : 'var(--secondary)';
+      var lifeHtml = lifeImpact ? '<div class="life-impact-badge" style="margin-top:6px">' + (lifeImpact.length > 100 ? lifeImpact.substring(0, 100) + '...' : lifeImpact) + '</div>' : '';
+      var bioHtml = r.bio ? '<div style="margin-top:8px;font-size:12px;color:var(--neutral);line-height:1.5">' + r.bio.substring(0, 120) + (r.bio.length > 120 ? '...' : '') + '</div>' : '';
+      var roleDesc = eduInfo ? (typeof eduInfo.whatTheyDo === 'string' ? eduInfo.whatTheyDo.split('.')[0] + '.' : eduInfo.affectsYourLife.slice(0, 80) + '...') : '';
+      var roleHtml = roleDesc ? '<div class="life-impact-badge" style="margin-top:6px;margin-bottom:4px">' + roleDesc + '</div>' : '';
+      var imgHtml = hasImage ? '<img src="' + r.imageUrl + '" style="width:100%;height:100%;object-fit:cover" alt="" />' : initial;
+      var phoneHtml = r.phone ? '<a href="tel:' + r.phone + '" class="btn btn-sm btn-outline" style="text-decoration:none">&#9742; Call</a>' : '';
+      var webHtml = r.website ? '<a href="' + r.website + '" target="_blank" class="btn btn-sm btn-outline">&#127760; Website</a>' : '';
+      return '<div class="card rep-card" style="padding:14px;cursor:pointer">' +
+        '<div style="display:flex;gap:14px;align-items:flex-start">' +
+          '<div class="rep-avatar" style="background:' + partyColor + ';width:48px;height:48px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;color:white;flex-shrink:0;overflow:hidden">' +
+            imgHtml + '</div>' +
+          '<div style="flex:1;min-width:0">' +
+            '<div style="font-weight:600;font-size:15px;color:var(--primary)">' + r.name + '</div>' +
+            '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:2px">' +
+              '<span style="font-size:12px;color:var(--neutral-lighter)">' + r.chamber + '</span>' +
+              '<span class="rep-badge" style="background:' + partyColor + '15;color:' + partyColor + ';padding:1px 6px;border-radius:3px;font-size:10px;font-weight:600">' + (r.party ? r.party.substring(0,4) : '') + '</span>' +
+              '<span class="level-badge" style="background:' + levelColor + '15;color:' + levelColor + ';padding:1px 5px;border-radius:3px;font-size:9px;font-weight:600">' + levelBadge + '</span>' +
+              '<span style="font-size:11px;color:var(--neutral-light)">' + r.state + (r.district ? ' - District ' + r.district : '') + '</span>' +
+            '</div>' +
+            roleHtml +
+          '</div>' +
+        '</div>' +
+        bioHtml +
+        lifeHtml +
+        '<div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">' +
+          phoneHtml +
+          webHtml +
+        '</div>' +
+      '</div>';
     }).join('');
   }
-
-  let billsHtml = '';
-  if (recentBills.length) {
-    billsHtml = recentBills.map(b => {
-      const statusClass = b.status.toLowerCase().replace(/\s+/g, '-');
-      const isTracked = state.trackedBills.includes(b.id);
-      return `
-        <div class="bill-item" data-bill-id="${b.id}" style="cursor:pointer">
-          <div class="bill-status status-${statusClass}"></div>
-          <div class="bill-info">
-            <div class="bill-id">${b.id}</div>
-            <div class="bill-name">${b.title}</div>
-            <div class="bill-status-text">${b.status}</div>
-          </div>
-          <button class="bill-track-btn${isTracked ? ' tracked' : ''}" data-bill-id="${b.id}" onclick="event.stopPropagation();toggleTrackBill('${b.id}')">
-            <i data-lucide="${isTracked ? 'check' : 'plus'}" style="width:16px;height:16px"></i>
-          </button>
-        </div>
-      `;
-    }).join('');
-  }
-
-  return `
-    <div class="dashboard-greeting">
-      <h2>Welcome${state.address ? ', Neighbor' : ''}</h2>
-      <p>Stay informed on the issues that matter to you.</p>
-      ${addressChip}
-    </div>
-
-    <div class="section-header">
-      <h3>Your Representatives</h3>
-      <a onclick="navigate('browse')">View all</a>
-    </div>
-    ${repCards || `<div class="card" style="text-align:center;padding:24px;color:var(--neutral-lighter)">
-      <p>Enter your address on the settings page to see your reps.</p>
-    </div>`}
-
-    <div class="section-header">
-      <h3>Recent Bills</h3>
-      <a onclick="navigate('browse')">Browse all</a>
-    </div>
-    <div class="card" style="padding:4px 16px">
-      ${billsHtml || '<p style="padding:12px 0;color:var(--neutral-lighter)">No bills loaded yet.</p>'}
-    </div>
-
-    <div class="tracking-stats" style="margin-top:20px">
-      <div class="stat-card">
-        <div class="stat-number">${tracked}</div>
-        <div class="stat-label">Tracked</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-number">${tracked > 0 ? Math.min(tracked, 3) : 0}</div>
-        <div class="stat-label">Updates</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-number">${state.reps.length}</div>
-        <div class="stat-label">My Reps</div>
-      </div>
-    </div>
-  `;
+  var emptyHtml = '<div class="card" style="text-align:center;padding:24px;color:var(--neutral-lighter)">' +
+    '<div style="display:flex;flex-direction:column;align-items:center;gap:8px">' +
+      '<i data-lucide="map-pin" style="width:32px;height:32px;opacity:0.3"></i>' +
+      '<p>Enter your ZIP in Settings to see your reps.</p>' +
+      '<button class="btn btn-primary" onclick="navigate(\'settings\')">Enter ZIP Code</button>' +
+    '</div>' +
+  '</div>';
+  var fedCount = state.reps.filter(function(r) { return r.level === 'federal'; }).length;
+  var stateCount = state.reps.filter(function(r) { return r.level === 'state'; }).length;
+  return '<div class="dashboard-greeting">' +
+    '<h2>Welcome' + (state.address ? ', Neighbor' : '') + '</h2>' +
+    '<p>See every person representing you.</p>' +
+    addressChip +
+  '</div>' +
+  '<div class="section">' +
+    '<div class="section-header"><h3>Your Representatives</h3></div>' +
+    (repCards || emptyHtml) +
+  '</div>' +
+  '<div id="coverage-note" style="margin-top:12px;display:none"></div>' +
+  '<div class="tracking-stats">' +
+    '<div class="stat-card"><div class="stat-number">' + state.reps.length + '</div><div class="stat-label">Officials Found</div></div>' +
+    '<div class="stat-card"><div class="stat-number">' + fedCount + '</div><div class="stat-label">Federal</div></div>' +
+    '<div class="stat-card"><div class="stat-number">' + stateCount + '</div><div class="stat-label">State</div></div>' +
+  '</div>';
 }
 
-// --- BROWSE (Bill Search & Rep Finder) ---
-function renderBrowse() {
-  const bills = state.allBills;
-  const filtered = state.currentBillFilter
-    ? bills.filter(b =>
-        b.title.toLowerCase().includes(state.currentBillFilter) ||
-        b.id.toLowerCase().includes(state.currentBillFilter) ||
-        b.topic.toLowerCase().includes(state.currentBillFilter)
-      )
-    : bills;
-  const totalPages = Math.ceil(filtered.length / state.itemsPerPage);
-  const page = Math.min(state.currentPage, totalPages || 1);
-  const start = (page - 1) * state.itemsPerPage;
-  const pageBills = filtered.slice(start, start + state.itemsPerPage);
-
-  let billsHtml = '';
-  if (pageBills.length === 0) {
-    billsHtml = '<p style="text-align:center;padding:24px;color:var(--neutral-lighter)">No bills found.</p>';
-  } else {
-    billsHtml = pageBills.map(b => {
-      const statusClass = b.status.toLowerCase().replace(/\s+/g, '-');
-      const isTracked = state.trackedBills.includes(b.id);
-      return `
-        <div class="card" style="cursor:pointer" data-bill-id="${b.id}">
-          <div class="card-header">
-            <div>
-              <div class="card-title">${b.id}: ${b.title}</div>
-              <div class="card-subtitle">Sponsor: ${b.sponsor} &middot; ${b.topic}${b.originChamber ? ' &middot; ' + b.originChamber : ''}</div>
-            </div>
-            <span class="card-badge badge-${statusClass === 'introduced' ? 'primary' : statusClass === 'in-committee' ? 'tertiary' : 'secondary'}">${b.status}</span>
-              ${lifeImpact ? `<div style="margin-top:4px;font-size:11px;color:var(--secondary);line-height:1.4">${lifeImpact.length > 80 ? lifeImpact.substring(0, 80) + '...' : lifeImpact}</div> : ''}
-          </div>
-          <div class="card-body">${b.summary}</div>
-          <div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap">
-            <button class="btn btn-sm ${isTracked ? 'btn-secondary' : 'btn-outline'}" data-track-bill="${b.id}" onclick="event.stopPropagation();toggleTrackBill('${b.id}')">
-              <i data-lucide="${isTracked ? 'check' : 'plus'}" style="width:14px;height:14px"></i>
-              ${isTracked ? 'Tracked' : 'Track'}
-            </button>
-            <button class="btn btn-sm btn-outline" onclick="event.stopPropagation();showBillDetail('${b.id}')">
-              <i data-lucide="info" style="width:14px;height:14px"></i>
-              Details
-            </button>
-            ${b.congressDotGovUrl ? `
-              <a href="${b.congressDotGovUrl}" target="_blank" class="btn btn-sm btn-outline" onclick="event.stopPropagation()" style="font-size:11px;padding:6px 10px">
-                <i data-lucide="external-link" style="width:12px;height:12px"></i>
-                Congress.gov
-              </a>
-            ` : ''}
-          </div>
-        </div>
-      `;
-    }).join('');
-  }
-
-  // Pagination
-  let pagHtml = '';
-  if (totalPages > 1) {
-    let pages = '';
-    for (let i = 1; i <= totalPages; i++) {
-      pages += `<button class="page-btn${i === page ? ' active' : ''}" data-page="${i}">${i}</button>`;
-    }
-    pagHtml = `<div style="display:flex;gap:6px;justify-content:center;margin:16px 0">${pages}</div>`;
-  }
-
-  // Rep finder section (with Wikipedia images)
-  let repResultsHtml = '';
-  if (state.reps.length) {
-    repResultsHtml = state.reps.map(r => {
-      const partyColor = r.party === 'Republican' ? '#c73a3a' : '#1b6d24';
-      const hasImage = r.imageUrl && r.imageUrl !== '';
-      const eduInfo = window.getEducationForRep ? window.getEducationForRep(r) : null;
-  const roleDesc = eduInfo ? (typeof eduInfo.whatTheyDo === 'string' ? eduInfo.whatTheyDo.split('.')[0] + '.' : eduInfo.affectsYourLife.slice(0, 80) + '...') : '';
-  const bioSnippet = r.bio ? r.bio.substring(0, 120) + (r.bio.length > 120 ? '...' : '') : '';
-      return `
-        <div class="card rep-full-card" data-rep="${r.name}" style="padding:14px;cursor:pointer">
-          <div style="display:flex;align-items:center;gap:12px">
-            <div style="width:48px;height:48px;border-radius:50%;background:${partyColor};color:white;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:20px;flex-shrink:0;overflow:hidden">
-              ${hasImage
-                ? `<img src="${r.imageUrl}" alt="${r.name}" style="width:100%;height:100%;object-fit:cover" />`
-                : r.name.charAt(0)
-              }
-            </div>
-            <div style="flex:1;min-width:0">
-              <div style="font-weight:600;color:var(--primary);font-size:15px">${r.name}</div>
-              <div style="font-size:12px;color:var(--neutral-lighter)">${r.chamber} - ${r.party}</div>
-              <div style="font-size:11px;color:var(--neutral-light);display:flex;align-items:center;gap:4px">
-                <span style="font-size:9px;font-weight:600;padding:1px 5px;border-radius:3px;background:${r.level === 'federal' ? 'rgba(0,31,69,0.08)' : 'rgba(27,109,36,0.08)'};color:${r.level === 'federal' ? 'var(--primary)' : 'var(--secondary)'}">${r.level === 'federal' ? 'FED' : 'STATE'}</span>
-                ${r.state}${r.district ? ' - District ' + r.district : ''}
-              </div>
-            </div>
-          </div>
-          ${bioSnippet ? `<div style="margin-top:8px;font-size:12px;color:var(--neutral);line-height:1.5">${bioSnippet}</div>` : ''}
-          <div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px">
-            ${r.phone ? `<a href="tel:${r.phone}" class="btn btn-sm btn-outline" style="font-size:11px;padding:4px 10px">📞 Call</a>` : ''}
-            ${r.website ? `<a href="${r.website}" target="_blank" class="btn btn-sm btn-outline" style="font-size:11px;padding:4px 10px">🌐 Website</a>` : ''}
-            ${r.wikipediaTitle ? `<a href="https://en.wikipedia.org/wiki/${encodeURIComponent(r.wikipediaTitle)}" target="_blank" class="btn btn-sm btn-outline" style="font-size:11px;padding:4px 10px">📖 Wikipedia</a>` : ''}
-            ${r.govtrackUrl ? `<a href="${r.govtrackUrl}" target="_blank" class="btn btn-sm btn-outline" style="font-size:11px;padding:4px 10px">🏛️ GovTrack</a>` : ''}
-            ${r.openstatesUrl ? `<a href="${r.openstatesUrl}" target="_blank" class="btn btn-sm btn-outline" style="font-size:11px;padding:4px 10px">📋 OpenStates</a>` : ''}
-          </div>
-        </div>
-      `;
-    }).join('');
-  }
-
-  return `
-    <!-- Bill Search -->
-    <div style="margin-bottom:20px">
-      <div class="search-bar">
-        <i data-lucide="search" style="width:18px;height:18px"></i>
-        <input type="text" id="bill-search-input" placeholder="Search bills by title, ID, or topic..." value="${state.currentBillFilter}" />
-      </div>
-    </div>
-
-    <!-- Bill List -->
-    <div style="margin-bottom:8px;display:flex;justify-content:space-between;align-items:center">
-      <h3 style="font-size:16px;font-weight:600;color:var(--neutral)">Bills</h3>
-      <span style="font-size:12px;color:var(--neutral-lighter)">${filtered.length} found</span>
-    </div>
-    ${billsHtml}
-    ${pagHtml}
-
-    <!-- Find Your Representative -->
-    <div style="margin-top:32px;padding-top:20px;border-top:1px solid var(--neutral-lightest)">
-      <h3 style="font-size:16px;font-weight:600;color:var(--neutral);margin-bottom:12px">Find Your Representative</h3>
-      <div style="display:flex;gap:8px">
-        <input type="text" class="input-field" id="rep-search-input" placeholder="Enter your address or ZIP..." style="flex:1" />
-        <button class="btn btn-primary" id="rep-search-btn">Search</button>
-      </div>
-      <div id="rep-results" style="margin-top:12px">
-        ${repResultsHtml}
-      </div>
-    </div>
-
-    <!-- Bill Detail Modal -->
-    <div id="bill-detail-modal" style="display:none"></div>
-  `;
-}
-
-// --- EVENTS ---
-function renderEvents() {
-  const events = [
-    { month: 'MAR', day: '15', title: 'House Budget Committee Hearing', desc: 'FY2026 Budget Resolution markup', time: '10:00 AM EST' },
-    { month: 'MAR', day: '22', title: 'Senate Judiciary Committee', desc: 'Nomination hearing for Circuit Court', time: '2:00 PM EST' },
-    { month: 'APR', day: '5', title: 'Education & Labor Subcommittee', desc: 'Hearing on higher education reform', time: '9:30 AM EST' },
-    { month: 'APR', day: '12', title: 'House Floor Vote', desc: 'HR-142: Climate Resilience Act', time: 'TBD' }
-  ];
-
-  const eventsHtml = events.map(e => `
-    <div class="card" style="padding:0;">
-      <div class="event-card">
-        <div class="event-date">
-          <span class="month">${e.month}</span>
-          <span class="day">${e.day}</span>
-        </div>
-        <div class="event-info">
-          <div class="event-title">${e.title}</div>
-          <div class="event-desc">${e.desc}</div>
-          <div class="event-time">
-            <i data-lucide="clock" style="width:14px;height:14px"></i>
-            ${e.time}
-          </div>
-          <button class="btn btn-sm btn-outline event-cal-btn">
-            <i data-lucide="calendar-plus" style="width:14px;height:14px"></i>
-            Add to Calendar
-          </button>
-        </div>
-      </div>
-    </div>
-  `).join('');
-
-  return `
-    <div class="cal-sync-card">
-      <h3>📅 Stay Informed</h3>
-      <p>Upcoming committee hearings, floor votes, and civic events.</p>
-      <div class="cal-sync-status">
-        <span class="dot"></span>
-        Calendar sync ready
-      </div>
-    </div>
-    ${eventsHtml}
-    <div style="text-align:center;margin-top:12px">
-      <button class="btn btn-outline btn-block">
-        <i data-lucide="external-link" style="width:16px;height:16px"></i>
-        Sync with Google Calendar
-      </button>
-    </div>
-  `;
-}
-
-// --- TRACKING (My Bills) ---
-function renderTracking() {
-  const tracked = state.allBills.filter(b => state.trackedBills.includes(b.id));
-  const trackedCount = tracked.length;
-
-  let billsHtml = '';
-  if (tracked.length === 0) {
-    billsHtml = `
-      <div class="empty-state">
-        <i data-lucide="file-text" style="width:48px;height:48px;stroke-width:1.5"></i>
-        <h3>No bills tracked yet</h3>
-        <p>Browse legislation and tap the track button to start following bills.</p>
-        <button class="btn btn-primary mt-16" onclick="navigate('browse')">
-          <i data-lucide="search" style="width:16px;height:16px"></i>
-          Browse Bills
-        </button>
-      </div>
-    `;
-  } else {
-    billsHtml = tracked.map(b => {
-      const statusClass = b.status.toLowerCase().replace(/\s+/g, '-');
-      return `
-        <div class="card" style="cursor:pointer" data-bill-id="${b.id}">
-          <div class="card-header">
-            <div>
-              <div class="card-title">${b.id}: ${b.title}</div>
-              <div class="card-subtitle">${b.topic} &middot; ${b.sponsor}</div>
-            </div>
-            <span class="card-badge badge-${statusClass === 'introduced' ? 'primary' : statusClass === 'in-committee' ? 'tertiary' : 'secondary'}">${b.status}</span>
-          </div>
-          <div style="margin-top:8px;display:flex;gap:8px;align-items:center">
-            <button class="btn btn-sm btn-outline" onclick="event.stopPropagation();showBillDetail('${b.id}')">
-              <i data-lucide="info" style="width:14px;height:14px"></i>
-              Details
-            </button>
-            <button class="btn btn-sm" style="background:var(--error);color:white;border:none" onclick="event.stopPropagation();toggleTrackBill('${b.id}')">
-              <i data-lucide="x" style="width:14px;height:14px"></i>
-              Remove
-            </button>
-          </div>
-        </div>
-      `;
-    }).join('');
-  }
-
-  return `
-    <div class="tracking-stats" style="margin-bottom:20px">
-      <div class="stat-card">
-        <div class="stat-number">${trackedCount}</div>
-        <div class="stat-label">Tracked</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-number">${trackedCount > 0 ? Math.min(trackedCount, 3) : 0}</div>
-        <div class="stat-label">Updates</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-number">0</div>
-        <div class="stat-label">Actions</div>
-      </div>
-    </div>
-    ${billsHtml}
-  `;
-}
-
-// --- SETTINGS ---
 function renderElections() {
   // Render the comprehensive election education hub
   const edu = window.ELECTION_EDUCATION || ELECTION_EDUCATION;
@@ -1129,76 +796,100 @@ function renderElections() {
   `;
 }
 
-function renderSettings() {
-  const topicPrefs = ['Education', 'Healthcare', 'Climate', 'Tax Reform', 'Immigration', 'Veterans'];
-  const topicHtml = topicPrefs.map(t => `
-    <div class="settings-item">
-      <div class="settings-item-left">
-        <div class="settings-item-label">${t}</div>
+
+function renderEvents() {
+  const events = [
+    { month: 'MAR', day: '15', title: 'House Budget Committee Hearing', desc: 'FY2026 Budget Resolution markup', time: '10:00 AM EST' },
+    { month: 'MAR', day: '22', title: 'Senate Judiciary Committee', desc: 'Nomination hearing for Circuit Court', time: '2:00 PM EST' },
+    { month: 'APR', day: '5', title: 'Education & Labor Subcommittee', desc: 'Hearing on higher education reform', time: '9:30 AM EST' },
+    { month: 'APR', day: '12', title: 'House Floor Vote', desc: 'HR-142: Climate Resilience Act', time: 'TBD' }
+  ];
+
+  const eventsHtml = events.map(e => `
+    <div class="card" style="padding:0;">
+      <div class="event-card">
+        <div class="event-date">
+          <span class="month">${e.month}</span>
+          <span class="day">${e.day}</span>
+        </div>
+        <div class="event-info">
+          <div class="event-title">${e.title}</div>
+          <div class="event-desc">${e.desc}</div>
+          <div class="event-time">
+            <i data-lucide="clock" style="width:14px;height:14px"></i>
+            ${e.time}
+          </div>
+          <button class="btn btn-sm btn-outline event-cal-btn">
+            <i data-lucide="calendar-plus" style="width:14px;height:14px"></i>
+            Add to Calendar
+          </button>
+        </div>
       </div>
-      <button class="toggle active" data-topic="${t.toLowerCase()}"></button>
     </div>
   `).join('');
 
   return `
-    <div class="settings-section">
-      <h4>Location</h4>
-      <div class="card" style="padding:16px">
-        <div style="display:flex;gap:8px">
-          <input type="text" class="input-field" id="settings-address" placeholder="Enter your address" value="${state.address}" style="flex:1" />
-          <button class="btn btn-primary" id="settings-save-address">Save</button>
-        </div>
-        ${state.address ? `
-          <div class="address-chip" style="margin-top:8px">
-            <i data-lucide="map-pin" style="width:14px;height:14px"></i>
-            ${state.address}
-          </div>
-        ` : ''}
+    <div class="cal-sync-card">
+      <h3>📅 Stay Informed</h3>
+      <p>Upcoming committee hearings, floor votes, and civic events.</p>
+      <div class="cal-sync-status">
+        <span class="dot"></span>
+        Calendar sync ready
       </div>
     </div>
-
-    <div class="settings-section">
-      <h4>Notifications</h4>
-      <div class="card" style="padding:4px 16px">
-        <div class="settings-item">
-          <div class="settings-item-left">
-            <i data-lucide="bell" style="width:20px;height:20px"></i>
-            <div>
-              <div class="settings-item-label">Push Notifications</div>
-              <div class="settings-item-desc">Get alerts on bill updates</div>
-            </div>
-          </div>
-          <button class="toggle active" id="toggle-push"></button>
-        </div>
-        <div class="settings-item">
-          <div class="settings-item-left">
-            <i data-lucide="mail" style="width:20px;height:20px"></i>
-            <div>
-              <div class="settings-item-label">Email Digest</div>
-              <div class="settings-item-desc">Weekly summary of tracked bills</div>
-            </div>
-          </div>
-          <button class="toggle" id="toggle-email"></button>
-        </div>
-      </div>
-    </div>
-
-    <div class="settings-section">
-      <h4>Topics of Interest</h4>
-      <div class="card" style="padding:4px 16px">
-        ${topicHtml}
-      </div>
-    </div>
-
-    <div class="privacy-notice">
-      <i data-lucide="shield" style="width:18px;height:18px;color:var(--primary);flex-shrink:0;margin-top:2px"></i>
-      <p><strong>Your privacy matters.</strong> Your ZIP code is only used to find your representatives via public APIs. No data is stored on our servers.</p>
-    </div>
-
-    <div style="text-align:center;margin-top:16px">
-      <p style="font-size:12px;color:var(--neutral-lighter)">Civic Sidekick v1.0 &middot; Data from GovTrack.us, OpenStates &amp; Wikipedia</p>
+    ${eventsHtml}
+    <div style="text-align:center;margin-top:12px">
+      <button class="btn btn-outline btn-block">
+        <i data-lucide="external-link" style="width:16px;height:16px"></i>
+        Sync with Google Calendar
+      </button>
     </div>
   `;
+}
+
+// --- TRACKING (My Bills) ---
+
+function renderSettings() {
+  return '<div class="settings-section">' +
+    '<h4>Location</h4>' +
+    '<div class="card" style="padding:16px">' +
+      '<div style="display:flex;gap:8px">' +
+        '<input type="text" class="input-field" id="settings-zip" placeholder="Enter your ZIP code" value="' + (state.zipCode || '') + '" style="flex:1" maxlength="10" />' +
+        '<button class="btn btn-primary" id="settings-find-reps">Find Reps</button>' +
+      '</div>' +
+      (state.address ? '<div class="address-chip" style="margin-top:8px"><i data-lucide="map-pin" style="width:14px;height:14px"></i> ' + state.address + '</div>' : '') +
+      '<p style="font-size:11px;color:var(--neutral-lighter);margin-top:8px">ZIP code is used to find your federal and state representatives via public APIs.</p>' +
+    '</div>' +
+  '</div>' +
+  '<div class="settings-section">' +
+    '<h4>About This App</h4>' +
+    '<div class="card" style="padding:16px">' +
+      '<p style="font-size:13px;color:var(--neutral);line-height:1.6;margin-bottom:12px">Civic Sidekick helps you find and learn about every elected official who represents you. Enter your ZIP code to see your federal and state representatives, with educational information about what each office does and how it affects your daily life.</p>' +
+      '<div class="privacy-notice">' +
+        '<i data-lucide="shield" style="width:18px;height:18px;color:var(--primary);flex-shrink:0;margin-top:2px"></i>' +
+        '<p><strong>Your privacy matters.</strong> Your ZIP code is only used to find your representatives via public APIs. No data is stored on our servers.</p>' +
+      '</div>' +
+    '</div>' +
+  '</div>' +
+  '<div style="text-align:center;margin-top:16px">' +
+    '<p style="font-size:12px;color:var(--neutral-lighter)">Civic Sidekick v2.0 &middot; Data from ProPublica, OpenStates, Google Civic &amp; Wikipedia</p>' +
+  '</div>';
+}
+
+// --- Toast notification ---
+function showToast(msg) {
+  var existing = document.getElementById('toast');
+  if (existing) existing.remove();
+  var toast = document.createElement('div');
+  toast.id = 'toast';
+  toast.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#001f45;color:white;padding:10px 20px;border-radius:8px;font-size:13px;font-weight:500;z-index:9997;box-shadow:0 4px 12px rgba(0,0,0,0.15);animation:slideUp 0.3s ease';
+  toast.textContent = msg;
+  document.body.appendChild(toast);
+  setTimeout(function() {
+    toast.style.opacity = '0';
+    toast.style.transition = 'opacity 0.3s';
+    setTimeout(function() { toast.remove(); }, 300);
+  }, 3000);
 }
 
 // ============================================
@@ -1206,323 +897,54 @@ function renderSettings() {
 // ============================================
 
 function attachScreenListeners(screenId) {
+  // Landing page ZIP search
+  var landingBtn = document.getElementById('landing-go');
+  var landingInput = document.getElementById('landing-zip');
+  if (landingBtn && landingInput) {
+    var doSearch = function() {
+      var zip = landingInput.value.trim();
+      if (zip.match(/^\d{5}(-\d{4})?$/)) {
+        state.address = zip;
+        findReps(zip);
+      } else {
+        showError('Please enter a valid 5-digit ZIP code.');
+      }
+    };
+    landingBtn.addEventListener('click', doSearch);
+    landingInput.addEventListener('keydown', function(e) { if (e.key === 'Enter') doSearch(); });
+  }
+
+  // Settings page ZIP search
+  var settingsBtn = document.getElementById('settings-find-reps');
+  var settingsInput = document.getElementById('settings-zip');
+  if (settingsBtn && settingsInput) {
+    var doSettingsSearch = function() {
+      var zip = settingsInput.value.trim();
+      if (zip.match(/^\d{5}(-\d{4})?$/)) {
+        state.address = zip;
+        state.zipCode = zip;
+        findReps(zip);
+      } else {
+        showError('Please enter a valid 5-digit ZIP code.');
+      }
+    };
+    settingsBtn.addEventListener('click', doSettingsSearch);
+    settingsInput.addEventListener('keydown', function(e) { if (e.key === 'Enter') doSettingsSearch(); });
+  }
+
   // Nav items
-  document.querySelectorAll('.nav-item').forEach(el => {
-    el.addEventListener('click', () => {
-      const screen = el.dataset.screen;
-      if (screen) navigate(screen);
+  document.querySelectorAll('.nav-item').forEach(function(el) {
+    el.addEventListener('click', function() {
+      var screen = el.dataset.screen;
+      navigate(screen);
     });
   });
-
-  // Landing
-  if (screenId === 'landing') {
-    const btn = document.getElementById('landing-btn');
-    const input = document.getElementById('landing-address');
-    const errEl = document.getElementById('landing-error');
-    if (btn && input) {
-      const handler = async () => {
-        const val = input.value.trim();
-        // Accept ZIP code (5 digits) or ZIP+4
-        const isValidZip = /^\d{5}(-\d{4})?$/.test(val);
-        if (!val) {
-          errEl.textContent = 'Please enter your ZIP Code.';
-          errEl.style.display = 'block';
-          return;
-        }
-        if (!isValidZip) {
-          errEl.textContent = 'Please enter a valid 5-digit ZIP Code.';
-          errEl.style.display = 'block';
-          return;
-        }
-        errEl.style.display = 'none';
-        btn.disabled = true;
-        btn.innerHTML = '<i data-lucide="loader" style="width:18px;height:18px" class="spin"></i> Loading...';
-        if (window.lucide) lucide.createIcons();
-
-        state.address = val;
-        state.reps = await findReps(val);
-
-        btn.disabled = false;
-        btn.innerHTML = '<i data-lucide="arrow-right" style="width:18px;height:18px"></i> Get Started';
-        if (window.lucide) lucide.createIcons();
-
-        if (state.reps.length > 0) {
-          navigate('home');
-        }
-      };
-      btn.addEventListener('click', handler);
-      input.addEventListener('keypress', e => { if (e.key === 'Enter') handler(); });
-    }
-  }
-
-  // Browse
-  if (screenId === 'browse') {
-    // Search input
-    const searchInput = document.getElementById('bill-search-input');
-    if (searchInput) {
-      let debounceTimer;
-      searchInput.addEventListener('input', () => {
-        clearTimeout(debounceTimer);
-        debounceTimer = setTimeout(() => {
-          state.currentBillFilter = searchInput.value.trim().toLowerCase();
-          state.currentPage = 1;
-          renderScreen('browse');
-        }, 300);
-      });
-    }
-
-    // Pagination
-    document.querySelectorAll('.page-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        state.currentPage = parseInt(btn.dataset.page, 10);
-        renderScreen('browse');
-      });
-    });
-
-    // Rep search (Google Civic + Wikipedia)
-    const repBtn = document.getElementById('rep-search-btn');
-    const repInput = document.getElementById('rep-search-input');
-    if (repBtn && repInput) {
-      const repHandler = async () => {
-        const val = repInput.value.trim();
-        if (val) {
-          repBtn.disabled = true;
-          repBtn.textContent = 'Searching...';
-          hideError();
-
-          state.address = val;
-          state.reps = await findReps(val);
-
-          repBtn.disabled = false;
-          repBtn.textContent = 'Search';
-
-          if (state.reps.length > 0) {
-            renderScreen('browse');
-          }
-        }
-      };
-      repBtn.addEventListener('click', repHandler);
-      repInput.addEventListener('keypress', e => { if (e.key === 'Enter') repHandler(); });
-    }
-
-    // Rep card click - show detail modal with bio
-    document.querySelectorAll('.rep-full-card').forEach(card => {
-      card.addEventListener('click', () => {
-        const name = card.dataset.rep;
-        const rep = state.reps.find(r => r.name === name);
-        if (rep) showRepDetail(rep);
-      });
-    });
-  }
-
-  // Settings
-  if (screenId === 'settings') {
-    const saveBtn = document.getElementById('settings-save-address');
-    const addrInput = document.getElementById('settings-address');
-    if (saveBtn && addrInput) {
-      saveBtn.addEventListener('click', async () => {
-        const val = addrInput.value.trim();
-        if (val) {
-          saveBtn.disabled = true;
-          saveBtn.textContent = 'Saving...';
-          hideError();
-
-          state.address = val;
-          state.reps = await findReps(val);
-
-          saveBtn.disabled = false;
-          saveBtn.textContent = 'Save';
-
-          if (state.reps.length > 0) {
-            renderScreen('settings');
-            showToast('Address saved with ' + state.reps.length + ' representatives found');
-          }
-        }
-      });
-    }
-
-    // Toggles
-    document.querySelectorAll('.toggle').forEach(toggle => {
-      toggle.addEventListener('click', () => {
-        toggle.classList.toggle('active');
-      });
-    });
-  }
-}
-
-// --- Global Functions (used in inline onclick) ---
-window.navigate = function(screenId) {
-  state.currentScreen = screenId;
-  const header = document.getElementById('app-header');
-  if (header) {
-    header.style.display = screenId === 'landing' ? 'none' : 'flex';
-  }
-  const nav = document.getElementById('bottom-nav');
-  if (nav) {
-    nav.style.display = screenId === 'landing' ? 'none' : 'flex';
-  }
-  renderScreen(screenId);
-  // Update nav active states
-  document.querySelectorAll('.nav-item').forEach(el => {
-    el.classList.toggle('active', el.dataset.screen === screenId);
-  });
-};
-
-window.toggleTrackBill = function(billId) {
-  const idx = state.trackedBills.indexOf(billId);
-  if (idx > -1) {
-    state.trackedBills.splice(idx, 1);
-    showToast('Removed from tracking');
-  } else {
-    state.trackedBills.push(billId);
-    showToast('Bill added to tracking');
-  }
-  // Re-render current screen
-  renderScreen(state.currentScreen);
-};
-
-window.showBillDetail = function(billId) {
-  const bill = state.allBills.find(b => b.id === billId);
-  if (!bill) return;
-  const statusClass = bill.status.toLowerCase().replace(/\s+/g, '-');
-  const overlay = document.createElement('div');
-  overlay.className = 'modal-overlay open';
-  overlay.innerHTML = `
-    <div class="modal-content">
-      <div class="modal-handle"></div>
-      <div class="modal-title">${bill.id}: ${bill.title}</div>
-      <div style="margin-bottom:12px">
-        <span class="card-badge badge-${statusClass === 'introduced' ? 'primary' : statusClass === 'in-committee' ? 'tertiary' : 'secondary'}">${bill.status}</span>
-      </div>
-      <div class="detail-section" style="padding:0">
-        <p style="margin-bottom:12px">${bill.summary}</p>
-        <p style="font-size:13px;color:var(--neutral-light)"><strong>Sponsor:</strong> ${bill.sponsor}</p>
-        <p style="font-size:13px;color:var(--neutral-light)"><strong>Topic:</strong> ${bill.topic}</p>
-        <p style="font-size:13px;color:var(--neutral-light)"><strong>Introduced:</strong> ${bill.introduced || 'N/A'}</p>
-        ${bill.originChamber ? `<p style="font-size:13px;color:var(--neutral-light)"><strong>Origin:</strong> ${bill.originChamber}</p>` : ''}
-      </div>
-      <div style="display:flex;flex-direction:column;gap:8px;margin-top:16px">
-        ${bill.congressDotGovUrl ? `
-          <a href="${bill.congressDotGovUrl}" target="_blank" class="btn btn-outline btn-block btn-sm" style="justify-content:flex-start">
-            <i data-lucide="external-link" style="width:16px;height:16px"></i>
-            View Full Bill
-          </a>
-        ` : ''}
-      </div>
-      <button class="btn btn-primary btn-block mt-16" onclick="this.closest('.modal-overlay').remove()">Close</button>
-    </div>
-  `;
-  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
-  document.body.appendChild(overlay);
-  if (window.lucide) lucide.createIcons();
-};
-
-// --- Representative Detail Modal (with Wikipedia bio) ---
-window.showRepDetail = function(rep) {
-  const partyColor = rep.party === 'Republican' ? '#c73a3a' : '#1b6d24';
-  const hasImage = rep.imageUrl && rep.imageUrl !== '';
-
-  const overlay = document.createElement('div');
-  overlay.className = 'modal-overlay open';
-  overlay.innerHTML = `
-    <div class="modal-content">
-      <div class="modal-handle"></div>
-      <div style="text-align:center;margin-bottom:16px">
-        <div style="width:80px;height:80px;border-radius:50%;background:${partyColor};color:white;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:32px;margin:0 auto 12px;overflow:hidden">
-          ${hasImage
-            ? `<img src="${rep.imageUrl}" alt="${rep.name}" style="width:100%;height:100%;object-fit:cover" />`
-            : rep.name.charAt(0)
-          }
-        </div>
-        <div class="modal-title" style="margin-bottom:4px">${rep.name}</div>
-        <div style="font-size:14px;color:var(--neutral-lighter)">
-          ${rep.chamber} - ${rep.party}
-          ${rep.state ? '&middot; ' + rep.state + (rep.district ? ' - District ' + rep.district : '') : ''}
-        </div>
-      </div>
-
-      ${rep.bio ? `
-        <div style="margin-bottom:16px;padding:12px;background:var(--bg);border-radius:var(--radius-sm)">
-          <h4 style="font-size:12px;font-weight:700;color:var(--neutral-lighter);text-transform:uppercase;margin-bottom:6px">Biography</h4>
-          <p style="font-size:13px;color:var(--neutral);line-height:1.7">${rep.bio}</p>
-        </div>
-      ` : ''}
-
-      ${rep.officeAddress ? `
-        <div style="margin-bottom:12px;padding:10px 12px;background:var(--bg);border-radius:var(--radius-sm);font-size:12px;color:var(--neutral-light)">
-          <strong>Washington Office:</strong> ${rep.officeAddress}, Washington DC
-        </div>
-      ` : ''}
-
-      <div style="display:flex;flex-direction:column;gap:8px">
-        ${rep.phone ? `
-          <a href="tel:${rep.phone}" class="btn btn-outline btn-block btn-sm" style="justify-content:flex-start">
-            📞 ${rep.phone}
-          </a>
-        ` : ''}
-        ${rep.website ? `
-          <a href="${rep.website}" target="_blank" class="btn btn-outline btn-block btn-sm" style="justify-content:flex-start">
-            🌐 ${rep.website}
-          </a>
-        ` : ''}
-        ${rep.wikipediaTitle ? `
-          <a href="https://en.wikipedia.org/wiki/${encodeURIComponent(rep.wikipediaTitle)}" target="_blank" class="btn btn-outline btn-block btn-sm" style="justify-content:flex-start">
-            📖 Wikipedia: ${rep.wikipediaTitle}
-          </a>
-        ` : ''}
-        ${rep.govtrackUrl ? `
-          <a href="${rep.govtrackUrl}" target="_blank" class="btn btn-outline btn-block btn-sm" style="justify-content:flex-start">
-            🏛️ GovTrack Profile
-          </a>
-        ` : ''}
-        ${rep.openstatesUrl ? `
-          <a href="${rep.openstatesUrl}" target="_blank" class="btn btn-outline btn-block btn-sm" style="justify-content:flex-start">
-            📋 OpenStates Profile
-          </a>
-        ` : ''}
-      </div>
-
-      <button class="btn btn-primary btn-block mt-16" onclick="this.closest('.modal-overlay').remove()">Close</button>
-    </div>
-  `;
-  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
-  document.body.appendChild(overlay);
-  if (window.lucide) lucide.createIcons();
-};
-
-// --- Toast Notifications ---
-function showToast(message) {
-  let container = document.querySelector('.toast-container');
-  if (!container) {
-    container = document.createElement('div');
-    container.className = 'toast-container';
-    document.body.appendChild(container);
-  }
-  const toast = document.createElement('div');
-  toast.className = 'toast';
-  toast.textContent = message;
-  container.appendChild(toast);
-  setTimeout(() => {
-    toast.style.opacity = '0';
-    toast.style.transition = 'opacity 0.3s';
-    setTimeout(() => toast.remove(), 300);
-  }, 2000);
 }
 
 // ============================================
 // INIT
 // ============================================
 
-document.addEventListener('DOMContentLoaded', async () => {
-  // Load bills
-  await fetchBills();
-  // Render app
+document.addEventListener('DOMContentLoaded', function() {
   renderApp();
-  // Hide header & nav on landing
-  const header = document.getElementById('app-header');
-  if (header) header.style.display = 'none';
-  const nav = document.getElementById('bottom-nav');
-  if (nav) nav.style.display = 'none';
-  // Init Lucide
-  if (window.lucide) lucide.createIcons();
 });

@@ -1,4 +1,4 @@
-package com.civicsidekick.app
+﻿package com.civicsidekick.app
 
 import android.content.Intent
 import android.net.Uri
@@ -15,7 +15,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.font.FontWeight
-import com.civicsidekick.app.data.BillsRepository
 import com.civicsidekick.app.data.RepsRepository
 import com.civicsidekick.app.data.api.OpenStatesApiKey
 import com.civicsidekick.app.data.model.Bill
@@ -45,15 +44,13 @@ class MainActivity : ComponentActivity() {
 // ---- Navigation Destinations ----
 
 enum class Screen {
-    LANDING, HOME, BROWSE, ELECTIONS, EVENTS, TRACKING, SETTINGS
+    LANDING, HOME, ELECTIONS, EVENTS, SETTINGS
 }
 
 data class AppUiState(
     val currentScreen: Screen = Screen.LANDING,
     val address: String = "",
     val reps: List<Representative> = emptyList(),
-    val allBills: List<Bill> = emptyList(),
-    val trackedBillIds: MutableSet<String> = mutableSetOf(),
     val isLoading: Boolean = false,
     val isSearchingReps: Boolean = false,
     val isAddressSearch: Boolean = false
@@ -71,12 +68,6 @@ fun CivicSidekickMainScreen() {
 
     // Load bills on first composition
     LaunchedEffect(Unit) {
-        val billsResult = BillsRepository.fetchBills()
-        if (billsResult.isSuccess) {
-            uiState = uiState.copy(allBills = billsResult.getOrDefault(emptyList()))
-        }
-    }
-
     // Helper to open URLs in browser
     val openUrl: (String) -> Unit = { url ->
         if (url.isNotBlank()) {
@@ -139,10 +130,10 @@ fun CivicSidekickMainScreen() {
                 ) {
                     val navItems = listOf(
                         NavBarItem("Home", Icons.Default.Home),
-                        NavBarItem("Browse", Icons.Default.Search),
+                        
                         NavBarItem("Elections", Icons.Default.HowToVote), // Vote icon approximation
                         NavBarItem("Events", Icons.Default.CalendarMonth),
-                        NavBarItem("My Bills", Icons.Default.Description),
+                        
                         NavBarItem("Settings", Icons.Default.Settings)
                     )
 
@@ -154,10 +145,8 @@ fun CivicSidekickMainScreen() {
                                 uiState = uiState.copy(
                                     currentScreen = when (index) {
                                         0 -> Screen.HOME
-                                        1 -> Screen.BROWSE
                                         2 -> Screen.ELECTIONS
                                         3 -> Screen.EVENTS
-                                        4 -> Screen.TRACKING
                                         5 -> Screen.SETTINGS
                                         else -> Screen.HOME
                                     }
@@ -220,88 +209,10 @@ fun CivicSidekickMainScreen() {
                     HomeScreen(
                         address = uiState.address,
                         reps = uiState.reps,
-                        recentBills = uiState.allBills.take(3),
-                        trackedBillIds = uiState.trackedBillIds,
-                        onNavigateBrowse = {
-                            selectedTab = 1
-                            uiState = uiState.copy(currentScreen = Screen.BROWSE)
-                        },
                         onRepClick = { /* Show detail modal - future */ },
                         onToggleTrack = { billId ->
                             toggleTrack(billId, uiState) { newState -> uiState = newState }
                         },
-                        onCallRep = { dialPhone(it) },
-                        onOpenWebsite = { openUrl(it) },
-                        onOpenOpenStates = { openUrl(it) },
-                        onOpenWikipedia = { openWikipedia(it) }
-                    )
-                }
-
-                Screen.BROWSE -> {
-                    BrowseScreen(
-                        state = BrowseUiState(
-                            bills = uiState.allBills,
-                            reps = uiState.reps,
-                            trackedBillIds = uiState.trackedBillIds,
-                            searchQuery = "",
-                            currentPage = 1,
-                            isLoadingReps = uiState.isSearchingReps,
-                            isAddressSearch = uiState.isAddressSearch
-                        ),
-                        onSearchQueryChange = { /* Filter - future */ },
-                        onPageChange = { /* Paginate - future */ },
-                        onRepZipSearch = { zip ->
-                            scope.launch {
-                                uiState = uiState.copy(isSearchingReps = true, isAddressSearch = false)
-                                val result = RepsRepository.findReps(zip)
-                                result.onSuccess { reps ->
-                                    uiState = uiState.copy(
-                                        isSearchingReps = false,
-                                        isAddressSearch = false,
-                                        address = zip,
-                                        reps = reps
-                                    )
-                                }.onFailure {
-                                    uiState = uiState.copy(isSearchingReps = false, isAddressSearch = false)
-                                }
-                            }
-                        },
-                        onRepAddressSearch = { address ->
-                            scope.launch {
-                                uiState = uiState.copy(isSearchingReps = true, isAddressSearch = true)
-                                // First get federal reps from state lookup, then local from address
-                                // Extract ZIP from address
-                                val zipMatch = Regex("\\d{5}(-\\d{4})?").find(address)
-                                val zip = zipMatch?.value ?: ""
-
-                                // Get federal + governor
-                                var allReps = emptyList<Representative>()
-                                if (zip.isNotBlank()) {
-                                    val federalResult = RepsRepository.findReps(zip)
-                                    federalResult.onSuccess { reps ->
-                                        allReps = reps
-                                    }
-                                }
-
-                                // Get local officials from Google Civic
-                                val localResult = RepsRepository.findLocalOfficials(address)
-                                localResult.onSuccess { localReps ->
-                                    allReps = allReps.toMutableList().apply { addAll(localReps) }
-                                }
-
-                                uiState = uiState.copy(
-                                    isSearchingReps = false,
-                                    isAddressSearch = false,
-                                    address = address,
-                                    reps = allReps
-                                )
-                            }
-                        },
-                        onToggleTrack = { billId ->
-                            toggleTrack(billId, uiState) { newState -> uiState = newState }
-                        },
-                        onBillClick = { /* Show detail - future */ },
-                        onRepClick = { /* Show detail - future */ },
                         onCallRep = { dialPhone(it) },
                         onOpenWebsite = { openUrl(it) },
                         onOpenOpenStates = { openUrl(it) },
@@ -317,23 +228,6 @@ fun CivicSidekickMainScreen() {
                 )
 
                 Screen.EVENTS -> EventsScreen()
-
-                Screen.TRACKING -> {
-                    val trackedBills = uiState.allBills.filter { uiState.trackedBillIds.contains(it.id) }
-                    TrackingScreen(
-                        trackedBills = trackedBills,
-                        trackedBillIds = uiState.trackedBillIds,
-                        onRemoveTrack = { billId ->
-                            uiState.trackedBillIds.remove(billId)
-                            uiState = uiState.copy()
-                        },
-                        onBillClick = { /* Show detail - future */ },
-                        onNavigateBrowse = {
-                            selectedTab = 1
-                            uiState = uiState.copy(currentScreen = Screen.BROWSE)
-                        }
-                    )
-                }
 
                 Screen.SETTINGS -> {
                     SettingsScreen(
